@@ -6,63 +6,61 @@
     android:layout_height="match_parent"
     tools:context="com.example.user.baidumapdemo.MainActivity">
 
+    <com.baidu.mapapi.map.MapView
+        android:id="@+id/bmapView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="true"
+        android:focusable="true" />
+
     <RelativeLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        android:padding="8dp">
 
-        <com.baidu.mapapi.map.MapView
-            android:id="@+id/bmapView"
+        <EditText
+            android:id="@+id/search_panorama"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clickable="true"
-            android:focusable="true" />
+            android:layout_height="50dp"
+            android:layout_marginTop="10dp"
+            android:hint="搜地点、查公交、找路线"
+            android:textSize="16sp"
+            android:background="#ffffff"
+            android:textColor="#000000"
+            android:textColorHint="#aacccccc"
+            android:padding="10dp" />
 
-        <!--默认图标 自定义图标（其实没什么卵用）-->
-        <!--android:background="#D000"-->
-        <!--<LinearLayout
+        <Button
+            android:id="@+id/ok_to_search"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_alignParentRight="true"
+            android:textColor="#000000"
+            android:text="搜索"
+            android:layout_alignTop="@id/search_panorama"
             android:layout_alignParentEnd="true"
-            android:layout_marginTop="80dip"
-            android:minWidth="100dip"
-            android:orientation="vertical"
-            android:padding="2dp">
-
-            <RadioGroup
-                android:id="@+id/radioGroup"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:contentDescription="定位icon" >
-
-                <RadioButton
-                    android:id="@+id/defaulticon"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:checked="true"
-                    android:text="默认图标" >
-                </RadioButton>
-
-                <RadioButton
-                    android:id="@+id/customicon"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="自定义图标" >
-                </RadioButton>
-            </RadioGroup>
-        </LinearLayout>-->
+            android:layout_alignParentRight="true"
+            android:background="#ff0000"
+            />
+        <!--<ImageView
+            android:id="@+id/ok_to_search"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_alignParentEnd="true"
+            android:layout_alignParentRight="true"
+            android:layout_alignParentTop="true"
+            android:clickable="true"
+            android:src="@drawable/search" />-->
 
         <Button
             android:id="@+id/button1"
-            android:background="#ffffff"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_alignParentRight="true"
             android:layout_alignParentEnd="true"
+            android:layout_alignParentRight="true"
             android:layout_alignParentTop="true"
-            android:layout_marginRight="25dp"
-            android:layout_marginEnd="25dp"
-            android:layout_marginTop="10dip" />
+            android:layout_marginTop="65dip"
+            android:background="#ffffff"
+            android:text="普通" />
     </RelativeLayout>
 
 
