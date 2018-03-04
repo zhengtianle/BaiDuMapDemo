@@ -22,7 +22,7 @@
                 android:id="@+id/city"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
-                android:text="威海" />
+                android:text="@string/city" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -40,7 +40,7 @@
         </LinearLayout>
 
         <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-            android:layout_width="fill_parent"
+            android:layout_width="match_parent"
             android:layout_height="40dip"
             android:orientation="horizontal">
 

@@ -126,7 +126,7 @@ public class MainActivity extends AppCompatActivity implements OnGetPoiSearchRes
     public MyLocationListener myListener = new MyLocationListener();
     private boolean isLocated=false;
 
-    private MyLocationConfiguration.LocationMode mCurrentMode;////////////
+    private MyLocationConfiguration.LocationMode mCurrentMode;
     BitmapDescriptor mCurrentMarker;
     private SensorManager mSensorManager;
     private Double lastX = 0.0;
@@ -136,7 +136,6 @@ public class MainActivity extends AppCompatActivity implements OnGetPoiSearchRes
     private float mCurrentAccracy;
 
     // UI相关
-    RadioGroup.OnCheckedChangeListener radioButtonListener;////////////
     Button requestLocButton;
     boolean isFirstLoc = true; // 是否首次定位
     private MyLocationData locData;

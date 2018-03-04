@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">BaiDuMapDemo</string>
+    <string name="app_name">郑天乐的地图Demo</string>
+    <string name="city">威海</string>
 </resources>

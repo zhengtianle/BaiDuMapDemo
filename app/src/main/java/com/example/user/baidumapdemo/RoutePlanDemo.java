@@ -48,7 +48,7 @@ import com.baidu.mapapi.search.route.WalkingRouteResult;
 import java.util.List;
 
 /**
- * 如何进行驾车、步行、公交、骑行、跨城综合路线搜索
+ * 如何进行驾车、步行、公交、骑行、综合路线搜索
  * 并在地图使用RouteOverlay、TransitOverlay绘制
  * 同时展示如何进行节点浏览并弹出泡泡
  * Created by user on 2018/3/2.
@@ -87,6 +87,7 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
 
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        requestWindowFeature(Window.FEATURE_NO_TITLE);// 设置标题栏不可用
         setContentView(R.layout.activity_routeplan);
         CharSequence titleLable = "路线规划功能";
         setTitle(titleLable);
@@ -122,13 +123,7 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
 
         // 实际使用中请对起点终点城市进行正确的设定
 
-        if (v.getId() == R.id.mass) {
-            PlanNode stMassNode = PlanNode.withCityNameAndPlaceName("北京", "天安门");
-            PlanNode enMassNode = PlanNode.withCityNameAndPlaceName("上海", "东方明珠");
-
-            mSearch.masstransitSearch(new MassTransitRoutePlanOption().from(stMassNode).to(enMassNode));
-            nowSearchType = 0;
-        } else if (v.getId() == R.id.drive) {
+        if (v.getId() == R.id.drive) {
             mSearch.drivingSearch((new DrivingRoutePlanOption())
                     .from(stNode).to(enNode));
             nowSearchType = 1;
@@ -194,58 +189,6 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
                 nodeLocation = ((BikingRouteLine.BikingStep) step).getEntrance().getLocation();
                 nodeTitle = ((BikingRouteLine.BikingStep) step).getInstructions();
             }
-        } else if (nowSearchType == 0) {
-            // 跨城综合交通  综合跨城公交的结果判断方式不一样
-
-
-            if (massroute == null || massroute.getNewSteps() == null) {
-                return;
-            }
-            if (nodeIndex == -1 && v.getId() == R.id.pre) {
-                return;
-            }
-            boolean isSamecity = nowResultmass.getOrigin().getCityId() == nowResultmass.getDestination().getCityId();
-            int size = 0;
-            if (isSamecity) {
-                size = massroute.getNewSteps().size();
-            } else {
-                for (int i = 0; i < massroute.getNewSteps().size(); i++) {
-                    size += massroute.getNewSteps().get(i).size();
-                }
-            }
-
-            // 设置节点索引
-            if (v.getId() == R.id.next) {
-                if (nodeIndex < size - 1) {
-                    nodeIndex++;
-                } else {
-                    return;
-                }
-            } else if (v.getId() == R.id.pre) {
-                if (nodeIndex > 0) {
-                    nodeIndex--;
-                } else {
-                    return;
-                }
-            }
-            if (isSamecity) {
-                // 同城
-                step = massroute.getNewSteps().get(nodeIndex).get(0);
-            } else {
-                // 跨城
-                int num = 0;
-                for (int j = 0; j < massroute.getNewSteps().size(); j++) {
-                    num += massroute.getNewSteps().get(j).size();
-                    if (nodeIndex - num < 0) {
-                        int k = massroute.getNewSteps().get(j).size() + nodeIndex - num;
-                        step = massroute.getNewSteps().get(j).get(k);
-                        break;
-                    }
-                }
-            }
-
-            nodeLocation = ((MassTransitRouteLine.TransitStep) step).getStartLocation();
-            nodeTitle = ((MassTransitRouteLine.TransitStep) step).getInstructions();
         }
 
         if (nodeLocation == null || nodeTitle == null) {
@@ -260,32 +203,6 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
         popupText.setTextColor(0xFF000000);
         popupText.setText(nodeTitle);
         mBaidumap.showInfoWindow(new InfoWindow(popupText, nodeLocation, 0));
-    }
-
-    /**
-     * 切换路线图标，刷新地图使其生效
-     * 注意： 起终点图标使用中心对齐.
-     */
-    public void changeRouteIcon(View v) {
-        if (routeOverlay == null) {
-            return;
-        }
-        if (useDefaultIcon) {
-            ((Button) v).setText("自定义起终点图标");
-            Toast.makeText(this,
-                    "将使用系统起终点图标",
-                    Toast.LENGTH_SHORT).show();
-
-        } else {
-            ((Button) v).setText("系统起终点图标");
-            Toast.makeText(this,
-                    "将使用自定义起终点图标",
-                    Toast.LENGTH_SHORT).show();
-
-        }
-        useDefaultIcon = !useDefaultIcon;
-        routeOverlay.removeFromMap();
-        routeOverlay.addToMap();
     }
 
 
