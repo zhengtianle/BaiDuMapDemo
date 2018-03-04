@@ -13,9 +13,14 @@ import android.os.Message;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -35,6 +40,8 @@ import com.baidu.mapapi.http.HttpClient;
 import com.baidu.mapapi.map.BaiduMap;
 import com.baidu.mapapi.map.BitmapDescriptor;
 import com.baidu.mapapi.map.BitmapDescriptorFactory;
+import com.baidu.mapapi.map.CircleOptions;
+import com.baidu.mapapi.map.GroundOverlayOptions;
 import com.baidu.mapapi.map.InfoWindow;
 import com.baidu.mapapi.map.MapPoi;
 import com.baidu.mapapi.map.MapStatus;
@@ -46,10 +53,23 @@ import com.baidu.mapapi.map.MarkerOptions;
 import com.baidu.mapapi.map.MyLocationConfiguration;
 import com.baidu.mapapi.map.MyLocationData;
 import com.baidu.mapapi.map.OverlayOptions;
+import com.baidu.mapapi.map.Stroke;
 import com.baidu.mapapi.map.TextureMapView;
 import com.baidu.mapapi.model.LatLng;
+import com.baidu.mapapi.model.LatLngBounds;
+import com.baidu.mapapi.search.core.CityInfo;
+import com.baidu.mapapi.search.core.PoiInfo;
 import com.baidu.mapapi.search.core.RouteLine;
 import com.baidu.mapapi.search.core.SearchResult;
+import com.baidu.mapapi.search.poi.OnGetPoiSearchResultListener;
+import com.baidu.mapapi.search.poi.PoiCitySearchOption;
+import com.baidu.mapapi.search.poi.PoiDetailResult;
+import com.baidu.mapapi.search.poi.PoiDetailSearchOption;
+import com.baidu.mapapi.search.poi.PoiIndoorResult;
+import com.baidu.mapapi.search.poi.PoiNearbySearchOption;
+import com.baidu.mapapi.search.poi.PoiResult;
+import com.baidu.mapapi.search.poi.PoiSearch;
+import com.baidu.mapapi.search.poi.PoiSortType;
 import com.baidu.mapapi.search.route.BikingRouteLine;
 import com.baidu.mapapi.search.route.BikingRoutePlanOption;
 import com.baidu.mapapi.search.route.BikingRouteResult;
@@ -67,6 +87,10 @@ import com.baidu.mapapi.search.route.TransitRouteResult;
 import com.baidu.mapapi.search.route.WalkingRouteLine;
 import com.baidu.mapapi.search.route.WalkingRoutePlanOption;
 import com.baidu.mapapi.search.route.WalkingRouteResult;
+import com.baidu.mapapi.search.sug.OnGetSuggestionResultListener;
+import com.baidu.mapapi.search.sug.SuggestionResult;
+import com.baidu.mapapi.search.sug.SuggestionSearch;
+import com.baidu.mapapi.search.sug.SuggestionSearchOption;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -83,12 +107,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 主函数
- * 结合定位SDK实现定位，并使用MyLocationOverlay绘制定位位置
- * 同时使用自定义图标绘制并点击时弹出泡泡
+ *  主函数
+ *  结合定位SDK实现定位，并使用MyLocationOverlay绘制定位位置
+ *  搜索框提示 实现poi搜索
  */
 
-public class MainActivity extends AppCompatActivity implements SensorEventListener {
+
+
+public class MainActivity extends AppCompatActivity implements OnGetPoiSearchResultListener,
+        OnGetSuggestionResultListener, SensorEventListener {
 
 
     private BaiduMap mBaiduMap=null;
@@ -97,11 +124,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     // 定位相关
     LocationClient mLocClient;
     public MyLocationListener myListener = new MyLocationListener();
+    private boolean isLocated=false;
 
     private MyLocationConfiguration.LocationMode mCurrentMode;////////////
     BitmapDescriptor mCurrentMarker;
-    private static final int accuracyCircleFillColor = 0xAAFFFF88;
-    private static final int accuracyCircleStrokeColor = 0xAA00FF00;
     private SensorManager mSensorManager;
     private Double lastX = 0.0;
     private int mCurrentDirection = 0;
@@ -114,69 +140,23 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     Button requestLocButton;
     boolean isFirstLoc = true; // 是否首次定位
     private MyLocationData locData;
-    private float direction;
 
-    private EditText searchEdit;
-    private Button okToSearch;
-    private List<SearchInfo> searchInfoLists;
-    private String uid;
+    private PoiSearch mPoiSearch = null;
+    private SuggestionSearch mSuggestionSearch = null;
+    private List<String> suggest;
+
+    /**
+     * 搜索关键字输入窗口
+     */
+    private EditText editCity = null;
+    private AutoCompleteTextView keyWorldsView = null;
+    private ArrayAdapter<String> sugAdapter = null;
+    private int loadIndex = 0;
 
 
-    @SuppressLint("HandlerLeak")
-    private Handler handler = new Handler() {
-        public void handleMessage(android.os.Message msg) {
-            if (msg.what == 0x1234) {
-                JSONObject object = (JSONObject) msg.obj;
-                //toast("json:----->"+object.toString());
-                //解析开始:然后把每一个地点信息封装到SearchInfo类中
-                try {
-                    JSONArray array = object.getJSONArray("results");
-                    for (int i = 0; i < array.length(); i++) {
-                        JSONObject joObject = array.getJSONObject(i);
-                        String name = joObject.getString("name");
-                        JSONObject object2 = joObject.getJSONObject("location");
-                        double lat = object2.getDouble("lat");
-                        double lng = object2.getDouble("lng");
-                        String address = joObject.getString("address");
-                        String streetIds = joObject.getString("street_id");
-                        String uids = joObject.getString("uid");
-                        SearchInfo mInfo = new SearchInfo(name, lat, lng, address, streetIds, uids);
-                        searchInfoLists.add(mInfo);
-                    }
 
-                } catch (JSONException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
-                }
+    int searchType = 0;  // 搜索的类型，在显示时区分
 
-            }
-            displayInDialog();
-        }
-
-        /**
-         * @author mikyou
-         * 显示搜索后信息的自定义列表项对话框，以及对话框点击事件的处理
-         * */
-        private void displayInDialog() {
-            if (searchInfoLists!=null) {
-                AlertDialog.Builder builder=new AlertDialog.Builder(MainActivity.this);
-                builder.setIcon(R.drawable.arrow).setTitle("请选择你查询到的地点")
-                        .setAdapter(new myDialogListAdapter(), new DialogInterface.OnClickListener() {
-
-                            @Override
-                            public void onClick(DialogInterface dialog, int which) {
-                                final SearchInfo mInfos=searchInfoLists.get(which);
-                                uid=mInfos.getUid();
-                                addPnoramaLayout(mInfos);//
-                            }
-
-                        }).show();
-            }else{
-                toast("未查询到相关地点");
-            }
-        }
-
-    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -184,124 +164,73 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         //在使用SDK各组件之前初始化context信息，传入ApplicationContext
         requestWindowFeature(Window.FEATURE_NO_TITLE);// 设置标题栏不可用
         SDKInitializer.initialize(getApplicationContext());
-        setContentView(R.layout.activity_main);
+        setContentView(R.layout.activity_poisearch);
+
+        // 初始化搜索模块，注册搜索事件监听
+        mPoiSearch = PoiSearch.newInstance();
+        mPoiSearch.setOnGetPoiSearchResultListener(this);
+        // 初始化建议搜索模块，注册建议搜索事件监听
+        mSuggestionSearch = SuggestionSearch.newInstance();
+        mSuggestionSearch.setOnGetSuggestionResultListener(this);
+
+        editCity = (EditText) findViewById(R.id.city);
+        keyWorldsView = (AutoCompleteTextView) findViewById(R.id.searchkey);
+        sugAdapter = new ArrayAdapter<String>(this,
+                android.R.layout.simple_dropdown_item_1line);
+        keyWorldsView.setAdapter(sugAdapter);
+        keyWorldsView.setThreshold(1);
+
+        /**
+         * 当输入关键字变化时，动态更新建议列表
+         */
+        keyWorldsView.addTextChangedListener(new TextWatcher() {
+
+            @Override
+            public void afterTextChanged(Editable arg0) {
+
+            }
+
+            @Override
+            public void beforeTextChanged(CharSequence arg0, int arg1,
+                                          int arg2, int arg3) {
+
+            }
+
+            @Override
+            public void onTextChanged(CharSequence cs, int arg1, int arg2,
+                                      int arg3) {
+                if (cs.length() <= 0) {
+                    return;
+                }
+
+                /**
+                 * 使用建议搜索服务获取建议列表，结果在onSuggestionResult()中更新
+                 */
+                mSuggestionSearch
+                        .requestSuggestion((new SuggestionSearchOption())
+                                .keyword(cs.toString()).city(editCity.getText().toString()));
+            }
+        });
+
         selectLocation();
-        initSearchDestination();
 
         mapStart();
 
 
     }//OnCreate()
 
-    /**
-     * 搜索
-     */
-    private void initSearchDestination() {
-        searchEdit=(EditText) findViewById(R.id.search_panorama);
-        okToSearch=(Button) findViewById(R.id.ok_to_search);
-        okToSearch.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                searchInfoLists=new ArrayList<SearchInfo>();
-                Intent intent = new Intent(MainActivity.this,PoiSearchDemo.class);
-                startActivity(intent);
-                getSearchDataFromNetWork();
-            }
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+    }
 
-        });
+    @Override
+    protected void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
     }
 
     /**
-     * 根据输入搜索的信息，从网络获得的JSON数据
-     * 开启一个子线程去获取网络数据
-     */
-    private void getSearchDataFromNetWork() {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    org.apache.http.client.HttpClient httpClient = new DefaultHttpClient();
-                    //用的百度的一个人的url，自己的包产生的url相关服务被禁用，没找出什么原因
-                    HttpGet httpGet = new HttpGet("http://api.map.baidu.com/place/v2/search?ak=nylibTfKmZw9mGe3juhT3U9x&output=json&query="+searchEdit.getText().toString()+"&page_size=10&page_num=0&scope=1&region=全国&mcode=F5:3E:06:3E:FC:E8:ED:19:60:2E:99:63:D8:78:85:2E:EB:12:9D:BE;com.mikyou.maptest");
-                    HttpResponse httpResponse = httpClient.execute(httpGet);
-                    //连接成功
-                    if(httpResponse.getStatusLine().getStatusCode() == 200){
-                        HttpEntity entity = httpResponse.getEntity();
-                        String response = EntityUtils.toString(entity,"utf-8");
-                        JSONObject jsonObject = new JSONObject(response);
-                        //获取result节点下的位置信息
-                        JSONArray resultArray = jsonObject.getJSONArray("result");
-                        if(resultArray.length() > 0){
-                            Message msg=new Message();
-                            msg.obj=jsonObject;
-                            msg.what=0x1234;
-                            handler.sendMessage(msg);
-                        }
-                    }
-
-                } catch (ClientProtocolException e) {
-                    e.printStackTrace();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-            }
-        }).start();
-    }
-
-    /**
-     * 将我们搜索的信息来自网络的JSON数据解析后，封装在一个SearchInfo类中
-     * 然后将这些数据展示在一个自定义的列表项的对话框中，以下就为定义列表项的适配器
-     * ListAdapter
-     */
-    class myDialogListAdapter extends BaseAdapter {
-        @Override
-        public int getCount() {
-            return searchInfoLists.size();
-        }
-
-        @Override
-        public Object getItem(int position) {
-            return getItem(position);
-        }
-
-        @Override
-        public long getItemId(int position) {
-            return position;
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            SearchInfo mSearchInfo=searchInfoLists.get(position);
-            View view=View.inflate(MainActivity.this, R.layout.dialog_list_item, null);
-            TextView desnameTv=(TextView) view.findViewById(R.id.desname);
-            TextView addressTv=(TextView) view.findViewById(R.id.address);
-            desnameTv.setText(mSearchInfo.getDesname());
-            addressTv.setText(mSearchInfo.getAddress());
-            return view;
-        }
-
-    }
-
-    /**
-     * 添加全景覆盖物，即全景的图标，迅速定位到该地点在地图上的位置
-     */
-    public void addPnoramaLayout(SearchInfo mInfos) {
-        mBaiduMap.clear();
-        LatLng latLng=new LatLng(mInfos.getLatitude(), mInfos.getLongtiude());
-        Marker pnoramaMarker=null;
-        OverlayOptions options;
-        BitmapDescriptor mPnoramaIcon=BitmapDescriptorFactory.fromResource(R.drawable.icon_gcoding);
-        options=new MarkerOptions().position(latLng).icon(mPnoramaIcon).zIndex(6);
-        pnoramaMarker=(Marker) mBaiduMap.addOverlay(options);
-        MapStatusUpdate msu=MapStatusUpdateFactory.newLatLng(latLng);
-        mBaiduMap.animateMapStatus(msu);
-    }
-
-
-    /**
-     * 地图定位初始化
+     * 地图初始化
      */
     public void mapStart(){
         // 地图初始化
@@ -318,23 +247,36 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         option.setScanSpan(1000);
         mLocClient.setLocOption(option);
         mLocClient.start();
+        isLocated=true;
 
+        /*ZoomControls zoomControls = (ZoomControls) mMapView.getChildAt(2);
+        //获取屏幕宽度
+        DisplayMetrics dm = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(dm);
+        //设置缩放按钮位置
+        zoomControls.setPadding(dm.widthPixels*1,0,0,100);*/
     }
 
     /**
-     * 定位模式
+     * 选择定位模式
+     * 普通 跟随 罗盘
      */
     public void selectLocation(){
-        requestLocButton = (Button) findViewById(R.id.button1);
+        requestLocButton = (Button) findViewById(R.id.button_location);
         mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);//获取传感器管理服务
         mCurrentMode = MyLocationConfiguration.LocationMode.NORMAL;
 
-        requestLocButton.setTextColor(Color.BLACK);
+        requestLocButton.setTextColor(Color.WHITE);
         View.OnClickListener btnClickListener = new View.OnClickListener() {
             public void onClick(View v) {
+                if(!isLocated){
+                    //开启定位
+                    mLocClient.start();
+                    isLocated=true;
+                }
                 switch (mCurrentMode) {
                     case NORMAL:
-                        requestLocButton.setText("跟随");
+                        requestLocButton.setText("跟随模式");
                         mCurrentMode = MyLocationConfiguration.LocationMode.FOLLOWING;
                         mBaiduMap.setMyLocationConfiguration(new MyLocationConfiguration(
                                 mCurrentMode, true, mCurrentMarker));
@@ -343,7 +285,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         mBaiduMap.animateMapStatus(MapStatusUpdateFactory.newMapStatus(builder.build()));
                         break;
                     case COMPASS:
-                        requestLocButton.setText("普通");
+                        requestLocButton.setText("普通模式");
                         mCurrentMode = MyLocationConfiguration.LocationMode.NORMAL;
                         mBaiduMap.setMyLocationConfiguration(new MyLocationConfiguration(
                                 mCurrentMode, true, mCurrentMarker));
@@ -352,7 +294,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         mBaiduMap.animateMapStatus(MapStatusUpdateFactory.newMapStatus(builder1.build()));
                         break;
                     case FOLLOWING:
-                        requestLocButton.setText("罗盘");
+                        requestLocButton.setText("罗盘模式");
                         mCurrentMode = MyLocationConfiguration.LocationMode.COMPASS;
                         mBaiduMap.setMyLocationConfiguration(new MyLocationConfiguration(
                                 mCurrentMode, true, mCurrentMarker));
@@ -360,11 +302,128 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     default:
                         break;
                 }
-            }
+
+
+            }//onClick
         };
         requestLocButton.setOnClickListener(btnClickListener);
 
     }
+
+    /**
+     * 响应城市点击事件
+     * @param v
+     */
+    public void searchButtonProcess(View v) {
+        if(isLocated){
+            //单次定位模式
+            mLocClient.stop();
+            isLocated=false;
+        }
+        searchType = 1;
+        String citystr = editCity.getText().toString();
+        String keystr = keyWorldsView.getText().toString();
+        mPoiSearch.searchInCity((new PoiCitySearchOption())
+                .city(citystr).keyword(keystr).pageNum(loadIndex));
+    }
+
+    public void searchRoute(View v){
+        Intent intent = new Intent(MainActivity.this,RoutePlanDemo.class);
+        startActivity(intent);
+    }
+
+    public void goToNextPage(View v) {
+        loadIndex++;
+        searchButtonProcess(null);
+    }
+
+    /**
+     * 获取POI搜索结果，searchInCity返回的搜索结果
+     * @param result
+     */
+    public void onGetPoiResult(PoiResult result) {
+        if (result == null || result.error == SearchResult.ERRORNO.RESULT_NOT_FOUND) {
+            Toast.makeText(MainActivity.this, "未找到结果", Toast.LENGTH_LONG)
+                    .show();
+            return;
+        }
+        if (result.error == SearchResult.ERRORNO.NO_ERROR) {
+            mBaiduMap.clear();
+            PoiOverlay overlay = new MyPoiOverlay(mBaiduMap);
+            mBaiduMap.setOnMarkerClickListener(overlay);
+            overlay.setData(result);
+            overlay.addToMap();
+            overlay.zoomToSpan();
+
+
+            return;
+        }
+        if (result.error == SearchResult.ERRORNO.AMBIGUOUS_KEYWORD) {
+
+            // 当输入关键字在本市没有找到，但在其他城市找到时，返回包含该关键字信息的城市列表
+            String strInfo = "在";
+            for (CityInfo cityInfo : result.getSuggestCityList()) {
+                strInfo += cityInfo.city;
+                strInfo += ",";
+            }
+            strInfo += "找到结果";
+            Toast.makeText(MainActivity.this, strInfo, Toast.LENGTH_LONG)
+                    .show();
+        }
+    }
+
+    /**
+     * 获取POI详情搜索结果，得到searchPoiDetail返回的搜索结果
+     * @param result
+     */
+    public void onGetPoiDetailResult(PoiDetailResult result) {
+        if (result.error != SearchResult.ERRORNO.NO_ERROR) {
+            Toast.makeText(MainActivity.this, "抱歉，未找到结果", Toast.LENGTH_SHORT)
+                    .show();
+        } else {
+            Toast.makeText(MainActivity.this, result.getName() + ": " + result.getAddress(), Toast.LENGTH_SHORT)
+                    .show();
+        }
+    }
+
+    /**
+     * 获取在线建议搜索结果，得到requestSuggestion返回的搜索结果
+     * @param res
+     */
+    @Override
+    public void onGetSuggestionResult(SuggestionResult res) {
+        if (res == null || res.getAllSuggestions() == null) {
+            return;
+        }
+        suggest = new ArrayList<String>();
+        for (SuggestionResult.SuggestionInfo info : res.getAllSuggestions()) {
+            if (info.key != null) {
+                suggest.add(info.key);
+            }
+        }
+        sugAdapter = new ArrayAdapter<String>(MainActivity.this, android.R.layout.simple_dropdown_item_1line, suggest);
+        keyWorldsView.setAdapter(sugAdapter);
+        sugAdapter.notifyDataSetChanged();
+    }
+
+    private class MyPoiOverlay extends PoiOverlay {
+
+        public MyPoiOverlay(BaiduMap baiduMap) {
+            super(baiduMap);
+        }
+
+        @Override
+        public boolean onPoiClick(int index) {
+            super.onPoiClick(index);
+            PoiInfo poi = getPoiResult().getAllPoi().get(index);
+            // if (poi.hasCaterDetails) {
+            mPoiSearch.searchPoiDetail((new PoiDetailSearchOption())
+                    .poiUid(poi.uid));
+            // }
+            return true;
+        }
+    }
+
 
     @Override
     public void onSensorChanged(SensorEvent sensorEvent) {
@@ -387,12 +446,11 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     }
 
+    @Override
+    public void onGetPoiIndoorResult(PoiIndoorResult poiIndoorResult) {
 
+    }
 
-
-    /**
-     * 定位SDK监听函数
-     */
     public class MyLocationListener implements BDLocationListener {
 
         @Override
@@ -427,13 +485,18 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     @Override
     protected void onDestroy() {
-        // 退出时销毁定位
-        mLocClient.stop();
+        //销毁定位
+        if(isLocated){
+            mLocClient.stop();
+            isLocated=false;
+        }
         // 关闭定位图层
         mBaiduMap.setMyLocationEnabled(false);
         //在activity执行onDestroy时执行mMapView.onDestroy()，实现地图生命周期管理
         mMapView.onDestroy();
         mMapView = null;
+        mPoiSearch.destroy();
+        mSuggestionSearch.destroy();
         super.onDestroy();
 
     }
@@ -459,10 +522,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         super.onPause();
         //在activity执行onPause时执行mMapView. onPause ()，实现地图生命周期管理
         mMapView.onPause();
-    }
-
-    public void toast(String str){
-        Toast.makeText(MainActivity.this, str, Toast.LENGTH_SHORT).show();
     }
 
 

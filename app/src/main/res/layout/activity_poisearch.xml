@@ -4,11 +4,12 @@
     android:layout_height="match_parent">
 
     <LinearLayout
+        android:background="#000000"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical">
         <LinearLayout
-            android:layout_width="fill_parent"
+            android:layout_width="match_parent"
             android:layout_height="50dip"
             android:orientation="horizontal">
 
@@ -21,24 +22,26 @@
                 android:id="@+id/city"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
-                android:text="北京" />
+                android:text="威海" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="市内找"></TextView>
+                android:text="市内找">
+
+            </TextView>
 
             <AutoCompleteTextView
                 android:id="@+id/searchkey"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="0.88"
-                android:text="餐厅" />
+                android:hint="请输入您想搜索的地方" />
         </LinearLayout>
 
         <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
             android:layout_width="fill_parent"
-            android:layout_height="50dip"
+            android:layout_height="40dip"
             android:orientation="horizontal">
 
             <Button
@@ -55,25 +58,40 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_weight="12"
-                android:onClick="searchNearbyProcess"
+                android:onClick="searchRoute"
                 android:padding="10dip"
-                android:text="周边搜索" />
+                android:text="查找路线" />
 
-            <Button
+            <!--<Button
                 android:id="@+id/searchBound"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_weight="12"
                 android:onClick="searchBoundProcess"
                 android:padding="10dip"
-                android:text="区域搜索" />
+                android:text="区域搜索" />-->
+
+            <Button
+                android:id="@+id/button_location"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_weight="12"
+                android:padding="10dip"
+                android:textColor="#ffffff"
+                android:text="普通模式"/>
         </LinearLayout>
 
-        <fragment
+        <com.baidu.mapapi.map.MapView
+            android:id="@+id/bmapView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clickable="true"
+            android:focusable="true" />
+        <!--<fragment
             android:id="@+id/map"
             class="com.baidu.mapapi.map.SupportMapFragment"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent" />-->
     </LinearLayout>
 
 
