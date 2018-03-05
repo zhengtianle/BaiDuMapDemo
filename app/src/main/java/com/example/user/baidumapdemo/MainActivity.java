@@ -152,8 +152,6 @@ public class MainActivity extends AppCompatActivity implements OnGetPoiSearchRes
     private ArrayAdapter<String> sugAdapter = null;
     private int loadIndex = 0;
 
-
-
     int searchType = 0;  // 搜索的类型，在显示时区分
 
 

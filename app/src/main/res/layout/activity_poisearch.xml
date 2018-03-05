@@ -51,7 +51,7 @@
                 android:layout_weight="12"
                 android:onClick="searchButtonProcess"
                 android:padding="10dip"
-                android:text="城市内搜索" />
+                android:text="位置查找" />
 
             <Button
                 android:id="@+id/searchNearby"
@@ -60,16 +60,8 @@
                 android:layout_weight="12"
                 android:onClick="searchRoute"
                 android:padding="10dip"
-                android:text="查找路线" />
+                android:text="路线查找" />
 
-            <!--<Button
-                android:id="@+id/searchBound"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_weight="12"
-                android:onClick="searchBoundProcess"
-                android:padding="10dip"
-                android:text="区域搜索" />-->
 
             <Button
                 android:id="@+id/button_location"
