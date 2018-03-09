@@ -3,7 +3,15 @@ package com.example.user.baidumapdemo;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.graphics.Color;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.location.LocationManager;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
@@ -15,16 +23,24 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.baidu.location.BDLocation;
+import com.baidu.location.BDLocationListener;
+import com.baidu.location.LocationClient;
+import com.baidu.location.LocationClientOption;
 import com.baidu.mapapi.map.BaiduMap;
 import com.baidu.mapapi.map.BitmapDescriptor;
 import com.baidu.mapapi.map.BitmapDescriptorFactory;
 import com.baidu.mapapi.map.InfoWindow;
 import com.baidu.mapapi.map.MapPoi;
+import com.baidu.mapapi.map.MapStatus;
 import com.baidu.mapapi.map.MapStatusUpdateFactory;
 import com.baidu.mapapi.map.MapView;
+import com.baidu.mapapi.map.MyLocationConfiguration;
+import com.baidu.mapapi.map.MyLocationData;
 import com.baidu.mapapi.model.LatLng;
 import com.baidu.mapapi.search.core.RouteLine;
 import com.baidu.mapapi.search.core.SearchResult;
+import com.baidu.mapapi.search.poi.PoiIndoorResult;
 import com.baidu.mapapi.search.route.BikingRouteLine;
 import com.baidu.mapapi.search.route.BikingRoutePlanOption;
 import com.baidu.mapapi.search.route.BikingRouteResult;
@@ -44,6 +60,8 @@ import com.baidu.mapapi.search.route.TransitRouteResult;
 import com.baidu.mapapi.search.route.WalkingRouteLine;
 import com.baidu.mapapi.search.route.WalkingRoutePlanOption;
 import com.baidu.mapapi.search.route.WalkingRouteResult;
+import com.baidu.mapapi.search.sug.OnGetSuggestionResultListener;
+import com.baidu.mapapi.search.sug.SuggestionResult;
 
 import java.util.List;
 
@@ -55,7 +73,7 @@ import java.util.List;
  */
 
 public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapClickListener,
-        OnGetRoutePlanResultListener {
+        OnGetRoutePlanResultListener, OnGetSuggestionResultListener, SensorEventListener {
     // 浏览路线节点相关
     Button mBtnPre = null; // 上一个节点
     Button mBtnNext = null; // 下一个节点
@@ -81,9 +99,26 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
 
     int nowSearchType = -1; // 当前进行的检索，供判断浏览节点时结果使用。
 
-    String startNodeStr = "西二旗地铁站";
-    String endNodeStr = "百度科技园";
+    String startNodeStr;// = "西二旗地铁站";
+    String endNodeStr;// = "百度科技园";
     boolean hasShownDialogue = false;
+
+    // 定位相关
+    LocationClient mLocClient;
+    public MyLocationListener myListener = new MyLocationListener();
+    private boolean isLocated=false;
+    Button requestLocButton;
+    boolean isFirstLoc = true; // 是否首次定位
+    private MyLocationData locData;
+    private MyLocationConfiguration.LocationMode mCurrentMode;
+    BitmapDescriptor mCurrentMarker;
+    private SensorManager mSensorManager;
+    private Double lastX = 0.0;
+    private int mCurrentDirection = 0;
+    private double mCurrentLat = 0.0;
+    private double mCurrentLon = 0.0;
+    private float mCurrentAccracy;
+    private String mCurrentCity;
 
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -91,6 +126,18 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
         setContentView(R.layout.activity_routeplan);
         CharSequence titleLable = "路线规划功能";
         setTitle(titleLable);
+
+        Intent intent = getIntent();
+        mCurrentCity = intent.getStringExtra("currentCity");//获取当前城市
+        startNodeStr = intent.getStringExtra("start");//起点
+        endNodeStr = intent.getStringExtra("end");//目的地
+        if(startNodeStr==null){
+            startNodeStr="山东大学(威海校区)";
+        }
+
+
+        initGPS();//检查GPS定位
+
         // 初始化地图
         mMapView = (MapView) findViewById(R.id.map);
         mBaidumap = mMapView.getMap();
@@ -103,7 +150,109 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
         // 初始化搜索模块，注册事件监听
         mSearch = RoutePlanSearch.newInstance();
         mSearch.setOnGetRoutePlanResultListener(this);
+
+        changeLocation();
+        location();
     }
+
+    private void initGPS() {
+        LocationManager locationManager = (LocationManager) this
+                .getSystemService(Context.LOCATION_SERVICE);
+        // 判断GPS模块是否开启，如果没有则开启
+        if (!locationManager
+                .isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+            Toast.makeText(RoutePlanDemo.this, "请打开GPS获取精确定位",
+                    Toast.LENGTH_SHORT).show();
+            AlertDialog.Builder dialog = new AlertDialog.Builder(this);
+            dialog.setMessage("请打开GPS");
+            dialog.setPositiveButton("确定",
+                    new android.content.DialogInterface.OnClickListener() {
+
+                        @Override
+                        public void onClick(DialogInterface arg0, int arg1) {
+
+                            // 转到手机设置界面，用户设置GPS
+                            Intent intent = new Intent(
+                                    Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+                            startActivityForResult(intent, 0); // 设置完成后返回到原来的界面
+
+                        }
+                    });
+            dialog.setNeutralButton("取消", new android.content.DialogInterface.OnClickListener() {
+
+                @Override
+                public void onClick(DialogInterface arg0, int arg1) {
+                    arg0.dismiss();
+                }
+            } );
+            dialog.show();
+        } else {
+            // 弹出Toast
+            //          Toast.makeText(TrainDetailsActivity.this, "GPS is ready",
+            //                  Toast.LENGTH_LONG).show();
+            //          // 弹出对话框
+            //          new AlertDialog.Builder(this).setMessage("GPS is ready")
+            //                  .setPositiveButton("OK", null).show();
+        }
+    }
+
+    public void location(){
+        mBaidumap.setMyLocationEnabled(true);
+        // 定位初始化
+        mLocClient = new LocationClient(this);
+        mLocClient.registerLocationListener(myListener);
+        LocationClientOption option = new LocationClientOption();
+        option.setOpenGps(true); // 打开gps
+        option.setCoorType("bd09ll"); // 设置坐标类型
+        option.setScanSpan(1000);
+        mLocClient.setLocOption(option);
+        mLocClient.start();
+    }
+
+    /**
+     * 选择定位模式
+     */
+    public void changeLocation(){
+        requestLocButton = (Button) findViewById(R.id.button_location_mode);
+        mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);//获取传感器管理服务
+        mCurrentMode = MyLocationConfiguration.LocationMode.COMPASS;
+        mBaidumap.setMyLocationConfiguration(new MyLocationConfiguration(
+                mCurrentMode, true, mCurrentMarker));
+        MapStatus.Builder builder = new MapStatus.Builder();
+        builder.overlook(0);
+        mBaidumap.animateMapStatus(MapStatusUpdateFactory.newMapStatus(builder.build()));
+
+        requestLocButton.setTextColor(Color.WHITE);
+        View.OnClickListener btnClickListener = new View.OnClickListener() {
+            public void onClick(View v) {
+                switch (mCurrentMode) {
+                    case COMPASS:
+                        requestLocButton.setText("跟随模式");
+                        mCurrentMode = MyLocationConfiguration.LocationMode.FOLLOWING;
+                        mBaidumap.setMyLocationConfiguration(new MyLocationConfiguration(
+                                mCurrentMode, true, mCurrentMarker));
+                        MapStatus.Builder builder = new MapStatus.Builder();
+                        builder.overlook(0);
+                        mBaidumap.animateMapStatus(MapStatusUpdateFactory.newMapStatus(builder.build()));
+                        break;
+                    case FOLLOWING:
+                        requestLocButton.setText("罗盘模式");
+                        mCurrentMode = MyLocationConfiguration.LocationMode.COMPASS;
+                        mBaidumap.setMyLocationConfiguration(new MyLocationConfiguration(
+                                mCurrentMode, true, mCurrentMarker));
+                        break;
+                    default:
+                        break;
+                }
+
+
+            }//onClick
+        };
+        requestLocButton.setOnClickListener(btnClickListener);
+
+    }
+
+
 
     /**
      * 发起路线规划搜索示例
@@ -118,8 +267,10 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
         mBaidumap.clear();
         // 处理搜索按钮响应
         // 设置起终点信息，对于tranist search 来说，城市名无意义
-        PlanNode stNode = PlanNode.withCityNameAndPlaceName("北京", startNodeStr);
-        PlanNode enNode = PlanNode.withCityNameAndPlaceName("北京", endNodeStr);
+
+        PlanNode stNode = PlanNode.withLocation(new LatLng(mCurrentLat,mCurrentLon));
+        //PlanNode stNode = PlanNode.withCityNameAndPlaceName(mCurrentCity, startNodeStr);
+        PlanNode enNode = PlanNode.withCityNameAndPlaceName(mCurrentCity, endNodeStr);
 
         // 实际使用中请对起点终点城市进行正确的设定
 
@@ -129,7 +280,7 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
             nowSearchType = 1;
         } else if (v.getId() == R.id.transit) {
             mSearch.transitSearch((new TransitRoutePlanOption())
-                    .from(stNode).city("北京").to(enNode));
+                    .from(stNode).city(mCurrentCity).to(enNode));//威海
             nowSearchType = 2;
         } else if (v.getId() == R.id.walk) {
             mSearch.walkingSearch((new WalkingRoutePlanOption())
@@ -218,8 +369,8 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
         }
         if (result.error == SearchResult.ERRORNO.AMBIGUOUS_ROURE_ADDR) {
             // 起终点或途经点地址有岐义，通过以下接口获取建议查询信息
-            // result.getSuggestAddrInfo()
-            AlertDialog.Builder builder = new AlertDialog.Builder(RoutePlanDemo.this);
+            result.getSuggestAddrInfo();
+            /*AlertDialog.Builder builder = new AlertDialog.Builder(RoutePlanDemo.this);
             builder.setTitle("提示");
             builder.setMessage("检索地址有歧义，请重新设置。\n可通过getSuggestAddrInfo()接口获得建议查询信息");
             builder.setPositiveButton("确认", new DialogInterface.OnClickListener() {
@@ -229,7 +380,7 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
                 }
             });
             builder.create().show();
-            return;
+            return;*/
         }
         if (result.error == SearchResult.ERRORNO.NO_ERROR) {
             nodeIndex = -1;
@@ -290,8 +441,9 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
         }
         if (result.error == SearchResult.ERRORNO.AMBIGUOUS_ROURE_ADDR) {
             // 起终点或途经点地址有岐义，通过以下接口获取建议查询信息
-            // result.getSuggestAddrInfo()
-            return;
+            result.getSuggestAddrInfo();
+            result.error = SearchResult.ERRORNO.NO_ERROR;
+            //return;
         }
         if (result.error == SearchResult.ERRORNO.NO_ERROR) {
             nodeIndex = -1;
@@ -354,7 +506,8 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
         if (result.error == SearchResult.ERRORNO.AMBIGUOUS_ROURE_ADDR) {
             // 起终点模糊，获取建议列表
             result.getSuggestAddrInfo();
-            return;
+            result.error = SearchResult.ERRORNO.NO_ERROR;
+            //return;
         }
         if (result.error == SearchResult.ERRORNO.NO_ERROR) {
             nowResultmass = result;
@@ -414,8 +567,9 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
         }
         if (result.error == SearchResult.ERRORNO.AMBIGUOUS_ROURE_ADDR) {
             // 起终点或途经点地址有岐义，通过以下接口获取建议查询信息
-            // result.getSuggestAddrInfo()
-            return;
+            result.getSuggestAddrInfo();
+            result.error = SearchResult.ERRORNO.NO_ERROR;
+            //return;
         }
         if (result.error == SearchResult.ERRORNO.NO_ERROR) {
             nodeIndex = -1;
@@ -478,8 +632,9 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
         }
         if (result.error == SearchResult.ERRORNO.AMBIGUOUS_ROURE_ADDR) {
             // 起终点或途经点地址有岐义，通过以下接口获取建议查询信息
-            // result.getSuggestAddrInfo()
-            AlertDialog.Builder builder = new AlertDialog.Builder(RoutePlanDemo.this);
+            result.getSuggestAddrInfo();
+            result.error = SearchResult.ERRORNO.NO_ERROR;
+            /*AlertDialog.Builder builder = new AlertDialog.Builder(RoutePlanDemo.this);
             builder.setTitle("提示");
             builder.setMessage("检索地址有歧义，请重新设置。\n可通过getSuggestAddrInfo()接口获得建议查询信息");
             builder.setPositiveButton("确认", new DialogInterface.OnClickListener() {
@@ -489,7 +644,7 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
                 }
             });
             builder.create().show();
-            return;
+            return;*/
         }
         if (result.error == SearchResult.ERRORNO.NO_ERROR) {
             nodeIndex = -1;
@@ -540,6 +695,7 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
 
         }
     }
+
 
     // 定制RouteOverly
     private class MyDrivingRouteOverlay extends DrivingRouteOverlay {
@@ -660,6 +816,61 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
     }
 
     @Override
+    public void onSensorChanged(SensorEvent sensorEvent) {
+        double x = sensorEvent.values[SensorManager.DATA_X];
+        if (Math.abs(x - lastX) > 1.0) {
+            mCurrentDirection = (int) x;
+            locData = new MyLocationData.Builder()
+                    .accuracy(mCurrentAccracy)
+                    // 此处设置开发者获取到的方向信息，顺时针0-360
+                    .direction(mCurrentDirection).latitude(mCurrentLat)
+                    .longitude(mCurrentLon).build();
+            mBaidumap.setMyLocationData(locData);
+        }
+        lastX = x;
+
+    }//onSensorChanged()
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
+    }
+
+    @Override
+    public void onGetSuggestionResult(SuggestionResult suggestionResult) {
+
+    }
+
+    public class MyLocationListener implements BDLocationListener {
+
+        @Override
+        public void onReceiveLocation(BDLocation location) {
+            // map view 销毁后不在处理新接收的位置
+            if (location == null || mMapView == null) {
+                return;
+            }
+            mCurrentLat = location.getLatitude();
+            mCurrentLon = location.getLongitude();
+            mCurrentAccracy = location.getRadius();
+            locData = new MyLocationData.Builder()
+                    .accuracy(location.getRadius())
+                    // 此处设置开发者获取到的方向信息，顺时针0-360
+                    .direction(mCurrentDirection).latitude(location.getLatitude())
+                    .longitude(location.getLongitude()).build();
+            mBaidumap.setMyLocationData(locData);
+            if (isFirstLoc) {
+                isFirstLoc = false;
+                LatLng ll = new LatLng(location.getLatitude(),
+                        location.getLongitude());
+                MapStatus.Builder builder = new MapStatus.Builder();
+                builder.target(ll).zoom(18.0f);
+                mBaidumap.animateMapStatus(MapStatusUpdateFactory.newMapStatus(builder.build()));
+            }
+        }
+
+    }
+
+    @Override
     public void onMapClick(LatLng point) {
         mBaidumap.hideInfoWindow();
     }
@@ -667,6 +878,13 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
     @Override
     public boolean onMapPoiClick(MapPoi poi) {
         return false;
+    }
+
+    @Override
+    protected void onStop() {
+        //取消注册传感器监听
+        mSensorManager.unregisterListener(this);
+        super.onStop();
     }
 
     @Override
@@ -679,6 +897,8 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
     protected void onResume() {
         mMapView.onResume();
         super.onResume();
+        mSensorManager.registerListener(this, mSensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION),
+                SensorManager.SENSOR_DELAY_UI);
     }
 
     @Override
@@ -686,7 +906,13 @@ public class RoutePlanDemo extends AppCompatActivity implements BaiduMap.OnMapCl
         if (mSearch != null) {
             mSearch.destroy();
         }
+        //销毁定位
+        mLocClient.stop();
+        // 关闭定位图层
+        mBaidumap.setMyLocationEnabled(false);
+        //在activity执行onDestroy时执行mMapView.onDestroy()，实现地图生命周期管理
         mMapView.onDestroy();
+        mMapView = null;
         super.onDestroy();
     }
 

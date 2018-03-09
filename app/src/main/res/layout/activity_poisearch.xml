@@ -22,12 +22,12 @@
                 android:id="@+id/city"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
-                android:text="@string/city" />
+                 />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="市内找">
+                android:text="内找">
 
             </TextView>
 
@@ -36,7 +36,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="0.88"
-                android:hint="请输入您想搜索的地方" />
+                android:hint="请输入目的地" />
         </LinearLayout>
 
         <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -78,7 +78,8 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clickable="true"
-            android:focusable="true" />
+            android:focusable="true"
+            android:focusableInTouchMode="true"/>
         <!--<fragment
             android:id="@+id/map"
             class="com.baidu.mapapi.map.SupportMapFragment"

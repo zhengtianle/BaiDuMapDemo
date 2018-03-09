@@ -1,21 +1,28 @@
 package com.example.user.baidumapdemo;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Message;
+import android.support.annotation.NonNull;
+import android.support.annotation.RequiresApi;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -61,6 +68,10 @@ import com.baidu.mapapi.search.core.CityInfo;
 import com.baidu.mapapi.search.core.PoiInfo;
 import com.baidu.mapapi.search.core.RouteLine;
 import com.baidu.mapapi.search.core.SearchResult;
+import com.baidu.mapapi.search.geocode.GeoCodeResult;
+import com.baidu.mapapi.search.geocode.GeoCoder;
+import com.baidu.mapapi.search.geocode.OnGetGeoCoderResultListener;
+import com.baidu.mapapi.search.geocode.ReverseGeoCodeResult;
 import com.baidu.mapapi.search.poi.OnGetPoiSearchResultListener;
 import com.baidu.mapapi.search.poi.PoiCitySearchOption;
 import com.baidu.mapapi.search.poi.PoiDetailResult;
@@ -110,6 +121,8 @@ import java.util.List;
  *  主函数
  *  结合定位SDK实现定位，并使用MyLocationOverlay绘制定位位置
  *  搜索框提示 实现poi搜索
+ *  输入某地点，点击查找路线，把此地点的第一个标注封装到intent里面(若查询不到相关地点，不跳转！)，
+ *  然后传给routePlan，读取到后，以当前位置为起点传过来的参数为终点绘制路线图。
  */
 
 
@@ -147,13 +160,16 @@ public class MainActivity extends AppCompatActivity implements OnGetPoiSearchRes
     /**
      * 搜索关键字输入窗口
      */
+    private String myCurrentCity;
     private EditText editCity = null;
     private AutoCompleteTextView keyWorldsView = null;
     private ArrayAdapter<String> sugAdapter = null;
     private int loadIndex = 0;
 
     int searchType = 0;  // 搜索的类型，在显示时区分
+    private String address;
 
+    private static final int BAIDU_LOCATION =100;//自定义一个权限获取码，用于回调函数中做对应处理
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -171,6 +187,8 @@ public class MainActivity extends AppCompatActivity implements OnGetPoiSearchRes
         mSuggestionSearch.setOnGetSuggestionResultListener(this);
 
         editCity = (EditText) findViewById(R.id.city);
+
+
         keyWorldsView = (AutoCompleteTextView) findViewById(R.id.searchkey);
         sugAdapter = new ArrayAdapter<String>(this,
                 android.R.layout.simple_dropdown_item_1line);
@@ -209,9 +227,12 @@ public class MainActivity extends AppCompatActivity implements OnGetPoiSearchRes
             }
         });
 
+        getPermission();//动态权限
+
         selectLocation();
 
         mapStart();
+
 
 
     }//OnCreate()
@@ -226,6 +247,35 @@ public class MainActivity extends AppCompatActivity implements OnGetPoiSearchRes
         super.onRestoreInstanceState(savedInstanceState);
     }
 
+    public void getPermission(){
+        if(Build.VERSION.SDK_INT >= 23) {
+            //Android6.0以上，需要动态申请运行时权限
+            if(getApplicationContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED||
+                    getApplicationContext().checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)!=PackageManager.PERMISSION_GRANTED) {
+                // 申请一个（或多个）权限，并提供用于回调返回的获取码（用户定义）
+                requestPermissions( new String[]{ Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.ACCESS_FINE_LOCATION },BAIDU_LOCATION );
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        switch(requestCode) {
+            // requestCode即所声明的权限获取码，在checkSelfPermission时传入
+            case BAIDU_LOCATION:
+            if(grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // 获取到权限，作相应处理（调用定位SDK应当确保相关权限均被授权，否则可能引起定位失败）
+            } else{
+                // 没有获取到权限，做特殊处理
+                Toast.makeText(MainActivity.this,"没有位置权限可能导致地图不显示或者定位不准确！", Toast.LENGTH_LONG).show();
+            }
+            break;
+            default:
+                break;
+        }
+    }
+
     /**
      * 地图初始化
      */
@@ -233,6 +283,7 @@ public class MainActivity extends AppCompatActivity implements OnGetPoiSearchRes
         // 地图初始化
         mMapView = (MapView) findViewById(R.id.bmapView);
         mBaiduMap = mMapView.getMap();
+        mMapView.requestFocus();
         // 开启定位图层
         mBaiduMap.setMyLocationEnabled(true);
         // 定位初始化
@@ -242,16 +293,12 @@ public class MainActivity extends AppCompatActivity implements OnGetPoiSearchRes
         option.setOpenGps(true); // 打开gps
         option.setCoorType("bd09ll"); // 设置坐标类型
         option.setScanSpan(1000);
+        option.setAddrType("all");
+        option.setIsNeedAddress(true);//需要地址信息
         mLocClient.setLocOption(option);
         mLocClient.start();
         isLocated=true;
 
-        /*ZoomControls zoomControls = (ZoomControls) mMapView.getChildAt(2);
-        //获取屏幕宽度
-        DisplayMetrics dm = new DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics(dm);
-        //设置缩放按钮位置
-        zoomControls.setPadding(dm.widthPixels*1,0,0,100);*/
     }
 
     /**
@@ -325,8 +372,21 @@ public class MainActivity extends AppCompatActivity implements OnGetPoiSearchRes
     }
 
     public void searchRoute(View v){
-        Intent intent = new Intent(MainActivity.this,RoutePlanDemo.class);
-        startActivity(intent);
+        if(keyWorldsView.getText().toString().isEmpty()){
+            Toast.makeText(MainActivity.this, "您还没填写地点", Toast.LENGTH_LONG)
+                    .show();
+        }else{
+            Log.d("MainActivity", "address: "+ address);
+
+            Intent intent = new Intent(MainActivity.this,RoutePlanDemo.class);
+            intent.putExtra("currentCity",myCurrentCity);//传值当前城市
+            intent.putExtra("start", address);//传值当前地址
+            //传值终点地址其实不准确
+            intent.putExtra("end",keyWorldsView.getText().toString());
+            startActivity(intent);
+
+        }
+
     }
 
     public void goToNextPage(View v) {
@@ -457,8 +517,20 @@ public class MainActivity extends AppCompatActivity implements OnGetPoiSearchRes
                 return;
             }
             mCurrentLat = location.getLatitude();
+            //Log.d("MainActivity", "Latitude: "+mCurrentLat);
             mCurrentLon = location.getLongitude();
+            //Log.d("MainActivity", "Longitude: "+mCurrentLon);
             mCurrentAccracy = location.getRadius();
+            address= location.getAddrStr();
+            //Log.d("MainActivity", "address: "+address);
+
+            myCurrentCity=location.getCity();
+            if(myCurrentCity.isEmpty()){
+                editCity.setText("威海");
+            }else{
+                editCity.setText(myCurrentCity);
+            }
+            //Log.d("MainActivity", "city: "+myCurrentCity);
             locData = new MyLocationData.Builder()
                     .accuracy(location.getRadius())
                     // 此处设置开发者获取到的方向信息，顺时针0-360
